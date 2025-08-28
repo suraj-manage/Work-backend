@@ -16,6 +16,7 @@ export const createBoard = async (req, res) => {
 
     await RoleAccess.create({
       user: userId,
+      owner: userId,
       board: board._id,
       role: "superAdmin",
       permissions: [
