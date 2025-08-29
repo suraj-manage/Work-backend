@@ -1,27 +1,30 @@
-import RoleAccess from "../models/Roleaccess.js";
+import RoleAccess from "../models/RoleAccess.js";
 
-export const revokePermissions = async (req, res, next) => {
+const revokePermissions = async (req, res, next) => {
   try {
-    const { role, permissions } = req.body;
-
-    if (!role || !permissions || !Array.isArray(permissions)) {
-      return res.status(400).json({ error: "Role and permissions array required" });
+    if (!req.user || req.user.role !== "superAdmin") {
+      return res.status(403).json({ message: "Forbidden: Only superAdmin can revoke roles" });
     }
 
-    // Find RoleAccess for this role
+    const { role, permissions } = req.body;
+    if (!role) return res.status(400).json({ message: "Role is required" });
+    if (!Array.isArray(permissions) || permissions.length === 0) {
+      return res.status(400).json({ message: "Permissions must be a non-empty array" });
+    }
+
     const roleAccess = await RoleAccess.findOne({ role });
-    if (!roleAccess) return res.status(404).json({ error: "RoleAccess not found" });
+    if (!roleAccess) return res.status(404).json({ message: `Role '${role}' not found` });
 
-    // Remove permissions from array
-    roleAccess.permissions = roleAccess.permissions.filter(
-      perm => !permissions.includes(perm)
-    );
-
+    roleAccess.permissions = roleAccess.permissions.filter(p => !permissions.includes(p));
     await roleAccess.save();
+
     req.roleAccess = roleAccess;
     next();
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Server error" });
+
+  } catch (error) {
+    console.error("Error revoking permissions:", error);
+    return res.status(500).json({ message: "Internal server error while revoking permissions", error: error.message });
   }
 };
+
+export { revokePermissions };

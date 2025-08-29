@@ -1,55 +1,46 @@
-import RoleAccess from "../models/Roleaccess.js";
+import RoleAccess from "../models/RoleAccess.js";
+import Board from "../models/Board.js";
 
-// Default permissions for each role
-const defaultPermissions = {
-  superAdmin: ["board.create","board.update","board.delete",
-               "list.create","list.update","list.delete",
-               "card.create","card.update","card.delete",
-               "card.checkbox","card.upload","card.comment"],
-  admin: ["list.create","list.update",
-          "card.create","card.update","card.delete",
-          "card.checkbox","card.upload","card.comment"],
-  member: [] // initially empty, superAdmin/admin will assign
-};
-
-export const assignPermissions = async (req, res, next) => {
+const assignPermission = async (req, res) => {
   try {
-    const { role, permissions, assignToRole } = req.body;
+    const boardId = req.params.id;
+    const requesterId = req.user && req.user.id;
+    const { userId, role, permissions } = req.body;
 
-    if (!role) return res.status(400).json({ error: "Role is required" });
+    if (!requesterId) return res.status(401).json({ message: "Unauthorized: no user in request" });
+    if (!boardId) return res.status(400).json({ message: "Board ID missing" });
+    if (!userId) return res.status(400).json({ message: "userId is required" });
+    if (!role) return res.status(400).json({ message: "Role is required" });
+    if (!Array.isArray(permissions)) return res.status(400).json({ message: "Permissions must be an array" });
 
-    // Determine actual permissions to assign
-    let permsToAssign = [];
+    const board = await Board.findById(boardId);
+    if (!board) return res.status(404).json({ message: "Board not found" });
 
-    if (role === "superAdmin") {
-      permsToAssign = defaultPermissions.superAdmin;
-    } else if (role === "admin") {
-      // Admin can assign only to members
-      if (assignToRole && assignToRole !== "member") {
-        return res.status(403).json({ error: "Admins can assign only to members" });
-      }
-      permsToAssign = defaultPermissions.admin.concat(permissions || []);
-    } else if (role === "member") {
-      permsToAssign = permissions || [];
-    }
+    const requesterRole = await RoleAccess.findOne({ user: requesterId, board: boardId, role: "superAdmin" });
+    if (!requesterRole) return res.status(403).json({ message: "Forbidden: only superAdmin can assign roles" });
 
-    // Find or create RoleAccess
-    let roleAccess = await RoleAccess.findOne({ role });
-    if (!roleAccess) {
-      roleAccess = await RoleAccess.create({ role, permissions: permsToAssign });
+    let roleDoc = await RoleAccess.findOne({ user: userId, board: boardId });
+    if (!roleDoc) {
+      roleDoc = await RoleAccess.create({ user: userId, board: boardId, role, permissions, owner: board.owner });
     } else {
-      permsToAssign.forEach((perm) => {
-        if (!roleAccess.permissions.includes(perm)) {
-          roleAccess.permissions.push(perm);
-        }
-      });
-      await roleAccess.save();
+      const existingPermissions = new Set(roleDoc.permissions);
+      permissions.forEach(p => existingPermissions.add(p));
+      roleDoc.role = role;
+      roleDoc.permissions = [...existingPermissions];
+      await roleDoc.save();
     }
 
-    req.roleAccess = roleAccess;
-    next();
+    if (!board.members.includes(userId)) {
+      board.members.push(userId);
+      await board.save();
+    }
+
+    return res.status(200).json({ success: true, message: "Role assigned successfully", role: roleDoc });
+
   } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Server error" });
+    console.error("Error in assignPermission:", err);
+    return res.status(500).json({ message: "Internal server error while assigning role", error: err.message });
   }
 };
+
+export default assignPermission;

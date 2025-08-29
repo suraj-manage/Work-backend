@@ -1,7 +1,7 @@
 import Board from "../models/Board.js";
 import RoleAccess from "../models/RoleAccess.js";
 
-// Create Board (auto superAdmin)
+// Create Board → auto superAdmin
 export const createBoard = async (req, res) => {
   try {
     const { title, color } = req.body;
@@ -14,6 +14,7 @@ export const createBoard = async (req, res) => {
       members: [userId],
     });
 
+    // give creator superAdmin with full perms
     await RoleAccess.create({
       user: userId,
       owner: userId,
@@ -21,6 +22,7 @@ export const createBoard = async (req, res) => {
       role: "superAdmin",
       permissions: [
         "board.create","board.update","board.delete",
+        "board.assign","board.revoke",
         "list.create","list.update","list.delete",
         "card.create","card.update","card.delete",
         "card.upload","card.checkbox","card.comment"
@@ -34,6 +36,7 @@ export const createBoard = async (req, res) => {
   }
 };
 
+// Get all boards where user is a member
 export const getBoards = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -45,6 +48,7 @@ export const getBoards = async (req, res) => {
   }
 };
 
+// Get single board
 export const getBoard = async (req, res) => {
   try {
     const board = await Board.findById(req.params.id);
@@ -56,6 +60,7 @@ export const getBoard = async (req, res) => {
   }
 };
 
+// Update board
 export const updateBoard = async (req, res) => {
   try {
     const { title, color } = req.body;
@@ -71,6 +76,7 @@ export const updateBoard = async (req, res) => {
   }
 };
 
+// Delete board
 export const deleteBoard = async (req, res) => {
   try {
     await Board.findByIdAndDelete(req.params.id);
